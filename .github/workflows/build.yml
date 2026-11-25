@@ -28,11 +28,11 @@ jobs:
             "crates/playback/src/callback.rs",
             "crates/ui-egui/src/app/audio.rs"
           )
-          foreach ($path in$targets) {
-            if (Test-Path $path) {$lines = Get-Content -Path $path$filtered = $lines \vert{} Where-Object {$_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' }
-              Set-Content -Path $path -Value $filtered
-            }
-          }
+         foreach ($path in $targets) {
+  if (Test-Path $path) {$lines = Get-Content -Path $path$filtered = $lines \vert{} Where-Object {$_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' }
+    Set-Content -Path $path -Value $filtered
+  }
+}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
