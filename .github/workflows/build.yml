@@ -1,85 +1,48 @@
-name: Unpack, Clean, and Build
+name: Build SoundCraft
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  build-windows:
-    name: Build Windows soundcraft.exe
+  build:
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Unpack zip into workspace root
+      - name: Unpack zip to workspace root
         shell: pwsh
         run: |
-          if (-not (Test-Path "Cargo.toml")) {
-            $zip = Get-ChildItem -Filter "*.zip" -Recurse |
-              Where-Object { $_.FullName -notmatch '[\\/]\.unpacked[\\/]' } |
-              Select-Object -First 1
-
-            if (-not $zip) {
-              Write-Error "No .zip archive found."
-              exit 1
-            }
-
-            Expand-Archive -Path $zip.FullName -DestinationPath ".unpacked" -Force
-
-            $cargo = Get-ChildItem -Path ".unpacked" -Filter "Cargo.toml" -Recurse |
-              Where-Object { (Get-Content $_.FullName -Raw) -match '[workspace]' } |
-              Select-Object -First 1
-
-            if (-not $cargo) {
-              Write-Error "Workspace Cargo.toml not found in zip."
-              exit 1
-            }
-
-            $srcDir =$cargo.Directory.FullName
-            $rootDir = (Get-Location).Path
-            Get-ChildItem -Path $srcDir -Force \vert Where-Object {$_.Name -ne ".unpacked" } | ForEach-Object {
-              Copy-Item -Path $_.FullName -Destination$rootDir -Recurse -Force
-            }
+          Expand-Archive -Path "soundcraft-main.zip" -DestinationPath ".tmp" -Force
+          $src = ".tmp/soundcraft-main"
+          if (-not (Test-Path $src)) {$src = (Get-Item ".tmp/*")[0].FullName
           }
+          Copy-Item -Path "$src/*" -Destination "." -Recurse -Force
 
-          if (-not (Test-Path "Cargo.toml")) {
-            Write-Error "Cargo.toml still not found at root."
-            exit 1
-          }
-
-      - name: Clean stray markdown fences and citation tags from .rs files
+      - name: Strip stray markdown fences and cite tags from Rust files
         shell: pwsh
         run: |
-          Get-ChildItem -Filter "*.rs" -Recurse | ForEach-Object {
-            $text = Get-Content -Path$_.FullName -Raw
-            $cleaned = [regex]::Replace($text, '(?m)^[ \t]*```[^\r\n]*\r?\n?', '')
-            $cleaned = [regex]::Replace($cleaned, '\[cite:[^\]]*\]', '')
-            if ($cleaned -ne $text) {
-              Write-Host "Cleaned: $($_.FullName)"
-              Set-Content -Path $_.FullName -Value $cleaned -NoNewline
+          $files = Get-ChildItem -Path "apps","crates","xtask" -Filter "*.rs" -Recurse -ErrorAction SilentlyContinue
+          foreach ($f in$files) {
+            $raw = Get-Content -Path$f.FullName -Raw
+            $clean = [regex]::Replace($raw, '(?m)^[ \t]*```[^\r\n]*\r?\n?', '')
+            $clean = [regex]::Replace($clean, '\[cite:[^\]]*\]', '')
+            if ($clean -ne $raw) {
+              Set-Content -Path $f.FullName -Value $clean -NoNewline
             }
           }
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Build release executable
+      - name: Build soundcraft.exe
         run: cargo build --release --package soundcraft --target x86_64-pc-windows-msvc
 
-      - name: Upload soundcraft.exe artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: soundcraft-windows-x86_64
           path: target/x86_64-pc-windows-msvc/release/soundcraft.exe
