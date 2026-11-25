@@ -20,16 +20,17 @@ jobs:
           }
           Copy-Item -Path "$src/*" -Destination "." -Recurse -Force
 
-      - name: Strip stray markdown fences and cite tags from Rust files
+      - name: Remove stray fence lines from edited files
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Path "apps","crates","xtask" -Filter "*.rs" -Recurse -ErrorAction SilentlyContinue
-          foreach ($f in$files) {
-            $raw = Get-Content -Path$f.FullName -Raw
-            $clean = [regex]::Replace($raw, '(?m)^[ \t]*```[^\r\n]*\r?\n?', '')
-            $clean = [regex]::Replace($clean, '\[cite:[^\]]*\]', '')
-            if ($clean -ne $raw) {
-              Set-Content -Path $f.FullName -Value $clean -NoNewline
+          $targets = @(
+            "crates/engine/src/cmd/view.rs",
+            "crates/playback/src/callback.rs",
+            "crates/ui-egui/src/app/audio.rs"
+          )
+          foreach ($path in$targets) {
+            if (Test-Path $path) {$lines = Get-Content -Path $path$filtered = $lines \vert{} Where-Object {$_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' }
+              Set-Content -Path $path -Value $filtered
             }
           }
 
