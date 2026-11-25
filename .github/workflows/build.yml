@@ -44,7 +44,7 @@ jobs:
 
             $srcDir =$cargo.Directory.FullName
             $rootDir = (Get-Location).Path
-            Get-ChildItem -Path $srcDir -Force \vert{} Where-Object {$_.Name -ne ".unpacked" } | ForEach-Object {
+            Get-ChildItem -Path $srcDir -Force \vert Where-Object {$_.Name -ne ".unpacked" } | ForEach-Object {
               Copy-Item -Path $_.FullName -Destination$rootDir -Recurse -Force
             }
           }
