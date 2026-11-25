@@ -15,10 +15,13 @@ jobs:
         shell: pwsh
         run: |
           Expand-Archive -Path "soundcraft-main.zip" -DestinationPath ".tmp" -Force
-          $src = ".tmp/soundcraft-main"
-          if (-not (Test-Path $src)) {$src = (Get-Item ".tmp/*")[0].FullName
+          $src = Join-Path ".tmp" "soundcraft-main"
+          if (-not (Test-Path $src)) {$src = (Get-ChildItem -Path ".tmp" -Directory | Select-Object -First 1).FullName
           }
-          Copy-Item -Path "$src/*" -Destination "." -Recurse -Force
+          $items = Get-ChildItem -Path $src -Force \vert{} Where-Object {$_.Name -ne ".tmp" }
+          foreach ($item in$items) {
+            Copy-Item -Path $item.FullName -Destination "." -Recurse -Force
+          }
 
       - name: Remove stray fence lines from edited files
         shell: pwsh
@@ -28,11 +31,11 @@ jobs:
             "crates/playback/src/callback.rs",
             "crates/ui-egui/src/app/audio.rs"
           )
-         foreach ($path in $targets) {
-  if (Test-Path $path) {$lines = Get-Content -Path $path$filtered = $lines \vert{} Where-Object {$_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' }
-    Set-Content -Path $path -Value $filtered
-  }
-}
+          foreach ($path in $targets) {
+            if (Test-Path $path) {$lines = Get-Content -Path $path$filtered = $lines \vert{} Where-Object {$_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' }
+              Set-Content -Path $path -Value $filtered
+            }
+          }
 
       - uses: dtolnay/rust-toolchain@stable
         with:
