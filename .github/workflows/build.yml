@@ -18,30 +18,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate or unpack SoundCraft zip archive
+      - name: Unpack zip containing soundcraft-main folder
         shell: pwsh
         run: |
           if (-not (Test-Path "Cargo.toml")) {
-            $zipFile = Get-ChildItem -Filter "*.zip" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($zipFile) {
-              Write-Host "Extracting $($zipFile.FullName)..."
-              Expand-Archive -Path $zipFile.FullName -DestinationPath ".unpacked" -Force
+            $zipFile = Get-ChildItem -Filter "*.zip" -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -notmatch '[\\/]\.unpacked[\\/]' } |
+              Select-Object -First 1
+
+            if (-not $zipFile) {
+              Write-Error "No .zip archive found in repository."
+              exit 1
+            }
+
+            Write-Host "Extracting $($zipFile.FullName)..."
+            Expand-Archive -Path $zipFile.FullName -DestinationPath ".unpacked" -Force
+          }
+
+          $nestedMain = Get-ChildItem -Path ".unpacked" -Directory -Filter "soundcraft-main" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          if ($nestedMain -and (Test-Path (Join-Path$nestedMain.FullName "Cargo.toml"))) {
+            $projectDir =$nestedMain.FullName
+          } else {
+            $cargoFile = Get-ChildItem -Path ".unpacked" -Filter "Cargo.toml" -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { (Get-Content $_.FullName -Raw) -match '[workspace]' } |
+              Select-Object -First 1
+
+            if ($cargoFile) {
+              $projectDir =$cargoFile.Directory.FullName
+            } elseif (Test-Path "Cargo.toml") {
+              $projectDir = (Get-Location).Path
+            } else {
+              Write-Error "Could not find soundcraft-main/Cargo.toml inside the unpacked zip."
+              exit 1
             }
           }
 
-          $cargoFile = Get-ChildItem -Filter "Cargo.toml" -Recurse -ErrorAction SilentlyContinue |
-            Where-Object {
-              $content = Get-Content $_.FullName -Raw$content -match '[workspace]'
-            } |
-            Select-Object -First 1
-
-          if (-not $cargoFile) {
-            Write-Error "Workspace Cargo.toml not found in repository or zip archive."
-            exit 1
-          }
-
-          $projectDir =$cargoFile.Directory.FullName
-          Write-Host "Using workspace directory: $projectDir"
+          Write-Host "Resolved project directory: $projectDir"
           "PROJECT_DIR=$projectDir" \vert{} Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Clean stray markdown fences and citation tags from .rs files
