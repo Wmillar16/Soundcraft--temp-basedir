@@ -31,8 +31,7 @@ jobs:
 
           $cargoFile = Get-ChildItem -Filter "Cargo.toml" -Recurse -ErrorAction SilentlyContinue |
             Where-Object {
-              $content = Get-Content $_.FullName -Raw
-              $content -match '\[workspace\]'
+              $content = Get-Content $_.FullName -Raw$content -match '[workspace]'
             } |
             Select-Object -First 1
 
@@ -41,9 +40,23 @@ jobs:
             exit 1
           }
 
-          $projectDir = $cargoFile.Directory.FullName
+          $projectDir =$cargoFile.Directory.FullName
           Write-Host "Using workspace directory: $projectDir"
-          "PROJECT_DIR=$projectDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PROJECT_DIR=$projectDir" \vert{} Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Clean stray markdown fences and citation tags from .rs files
+        shell: pwsh
+        run: |
+          $rsFiles = Get-ChildItem -Path "${{ env.PROJECT_DIR }}" -Filter "*.rs" -Recurse -ErrorAction SilentlyContinue
+          foreach ($f in$rsFiles) {
+            $text = Get-Content -Path$f.FullName -Raw
+            $cleaned = [regex]::Replace($text, '(?m)^[ \t]*```[^\r\n]*\r?\n?', '')
+            $cleaned = [regex]::Replace($cleaned, '\[cite:[^\]]*\]', '')
+            if ($cleaned -ne $text) {
+              Write-Host "Cleaned stray markdown/citations in $($f.FullName)"
+              Set-Content -Path $f.FullName -Value $cleaned -NoNewline
+            }
+          }
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
