@@ -1,0 +1,100 @@
+name: Build SoundCraft from Zip
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    name: Build Windows soundcraft.exe
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Unpack zip containing soundcraft-main folder
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "Cargo.toml")) {
+            $zipFile = Get-ChildItem -Filter "*.zip" -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -notmatch '[\\/]\.unpacked[\\/]' } |
+              Select-Object -First 1
+
+            if (-not $zipFile) {
+              Write-Error "No .zip archive found in repository."
+              exit 1
+            }
+
+            Write-Host "Extracting $($zipFile.FullName)..."
+            Expand-Archive -Path $zipFile.FullName -DestinationPath ".unpacked" -Force
+          }
+
+          $nestedMain = Get-ChildItem -Path ".unpacked" -Directory -Filter "soundcraft-main" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          if ($nestedMain -and (Test-Path (Join-Path$nestedMain.FullName "Cargo.toml"))) {
+            $projectDir =$nestedMain.FullName
+          } else {
+            $cargoFile = Get-ChildItem -Path ".unpacked" -Filter "Cargo.toml" -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { (Get-Content $_.FullName -Raw) -match '[workspace]' } |
+              Select-Object -First 1
+
+            if ($cargoFile) {
+              $projectDir =$cargoFile.Directory.FullName
+            } elseif (Test-Path "Cargo.toml") {
+              $projectDir = (Get-Location).Path
+            } else {
+              Write-Error "Could not find soundcraft-main/Cargo.toml inside the unpacked zip."
+              exit 1
+            }
+          }
+
+          Write-Host "Resolved project directory: $projectDir"
+          "PROJECT_DIR=$projectDir" \vert{} Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Clean stray markdown fences and citation tags from .rs files
+        shell: pwsh
+        run: |
+          $rsFiles = Get-ChildItem -Path "${{ env.PROJECT_DIR }}" -Filter "*.rs" -Recurse -ErrorAction SilentlyContinue
+          foreach ($f in$rsFiles) {
+            $text = Get-Content -Path$f.FullName -Raw
+            $cleaned = [regex]::Replace($text, '(?m)^[ \t]*```[^\r\n]*\r?\n?', '')
+            $cleaned = [regex]::Replace($cleaned, '\[cite:[^\]]*\]', '')
+            if ($cleaned -ne $text) {
+              Write-Host "Cleaned stray markdown/citations in $($f.FullName)"
+              Set-Content -Path $f.FullName -Value $cleaned -NoNewline
+            }
+          }
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          working-directory: ${{ env.PROJECT_DIR }}
+
+      - name: Build release executable
+        shell: pwsh
+        run: |
+          Push-Location "${{ env.PROJECT_DIR }}"
+          try {
+            cargo build --release --package soundcraft --target x86_64-pc-windows-msvc
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Upload soundcraft.exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundcraft-windows-x86_64
+          path: ${{ env.PROJECT_DIR }}/target/x86_64-pc-windows-msvc/release/soundcraft.exe
