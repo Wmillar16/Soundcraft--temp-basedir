@@ -16,24 +16,10 @@ jobs:
         run: |
           Expand-Archive -Path "soundcraft-main.zip" -DestinationPath ".tmp" -Force
           $src = Join-Path ".tmp" "soundcraft-main"
-          if (-not (Test-Path $src)) {$src = (Get-ChildItem -Path ".tmp" -Directory | Select-Object -First 1).FullName
+          if (-not (Test-Path $src)) {
+            $src = (Get-ChildItem -Path ".tmp" -Directory | Select-Object -First 1).FullName
           }
           Copy-Item -Path (Join-Path $src "*") -Destination "." -Recurse -Force
-
-      - name: Remove stray fence lines from edited files
-        shell: pwsh
-        run: |
-          $files = @(
-            "crates/engine/src/cmd/view.rs",
-            "crates/playback/src/callback.rs",
-            "crates/ui-egui/src/app/audio.rs"
-          )
-          $lines = Get-Content -Path$files[0]
-          Set-Content -Path $files[0] -Value ($lines \vert{} Where-Object {$_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' })
-          $lines = Get-Content -Path $files[1]
-          Set-Content -Path $files[1] -Value ($lines | Where-Object { $_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' })
-          $lines = Get-Content -Path$files[2]
-          Set-Content -Path $files[2] -Value ($lines \vert{} Where-Object {$_ -notmatch '^\s*```(\[cite:[^\]]*\])?\s*$' })
 
       - uses: dtolnay/rust-toolchain@stable
         with:
